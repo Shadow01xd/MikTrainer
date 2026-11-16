@@ -1,6 +1,7 @@
 // Prueba automática del motor: abre JuegoPrueba, encuentra la vida con el escáner
 // y comprueba escribir, congelar y parchear (y que todo se deshace al desactivar).
 using System.Diagnostics;
+using System.Text.Json;
 using MiTrainer.Core;
 
 if (args.Length == 0)
@@ -161,6 +162,71 @@ finally
         if (!juego.WaitForExit(2000)) juego.Kill();
     }
 }
+
+// ---------- Detección de juegos instalados ----------
+string falso = Path.Combine(Path.GetTempPath(), $"mitrainer-tiendas-{Environment.ProcessId}");
+try
+{
+    // Steam: biblioteca principal + una segunda en otro "disco"
+    string steam = Path.Combine(falso, "Steam"), otraBiblioteca = Path.Combine(falso, "D", "SteamLibrary");
+    Directory.CreateDirectory(Path.Combine(steam, "steamapps"));
+    Directory.CreateDirectory(Path.Combine(otraBiblioteca, "steamapps"));
+    File.WriteAllText(Path.Combine(steam, "steamapps", "libraryfolders.vdf"),
+        $"\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{steam.Replace(@"\", @"\\")}\"\n\t}}\n" +
+        $"\t\"1\"\n\t{{\n\t\t\"path\"\t\t\"{otraBiblioteca.Replace(@"\", @"\\")}\"\n\t}}\n}}");
+    void JuegoSteam(string biblioteca, string id, string nombre, string carpeta)
+    {
+        File.WriteAllText(Path.Combine(biblioteca, "steamapps", $"appmanifest_{id}.acf"),
+            $"\"AppState\"\n{{\n\t\"appid\"\t\t\"{id}\"\n\t\"name\"\t\t\"{nombre}\"\n\t\"installdir\"\t\t\"{carpeta}\"\n}}");
+        Directory.CreateDirectory(Path.Combine(biblioteca, "steamapps", "common", carpeta));
+    }
+    JuegoSteam(steam, "1086940", "Baldur's Gate 3", "Baldurs Gate 3");
+    JuegoSteam(otraBiblioteca, "105600", "Terraria", "Terraria");
+    JuegoSteam(steam, "228980", "Steamworks Common Redistributables", "Steamworks Shared");
+    // El .exe del juego (el más grande) frente a otros que no lo son
+    string bg3 = Path.Combine(steam, "steamapps", "common", "Baldurs Gate 3");
+    Directory.CreateDirectory(Path.Combine(bg3, "bin"));
+    File.WriteAllBytes(Path.Combine(bg3, "bin", "bg3.exe"), new byte[50_000]);
+    File.WriteAllBytes(Path.Combine(bg3, "bin", "CrashReporter.exe"), new byte[90_000]);
+    File.WriteAllBytes(Path.Combine(bg3, "unins000.exe"), new byte[90_000]);
+    File.WriteAllBytes(Path.Combine(bg3, "bin", "bg3_dx11.exe"), new byte[40_000]);
+
+    var steamJuegos = GameLibrary.Steam(steam).ToList();
+    var bg3Juego = steamJuegos.FirstOrDefault(j => j.Name == "Baldur's Gate 3");
+    Comprobar(steamJuegos.Count == 2 && steamJuegos.Any(j => j.Name == "Terraria"),
+        $"Steam: encuentra los juegos de las dos bibliotecas y descarta las herramientas [{string.Join(", ", steamJuegos.Select(j => j.Name))}]");
+    Comprobar(bg3Juego is { ProcessName: "bg3.exe", LaunchUri: "steam://rungameid/1086940" },
+        $"Steam: adivina el .exe (bg3.exe, no el instalador ni el CrashReporter) y el enlace para abrirlo: {bg3Juego?.ProcessName}");
+
+    // Epic: un juego y una aplicación que no es juego
+    string epic = Path.Combine(falso, "Epic");
+    string sb = Path.Combine(falso, "Games", "StellarBlade");
+    Directory.CreateDirectory(epic);
+    Directory.CreateDirectory(sb);
+    File.WriteAllText(Path.Combine(epic, "a.item"), JsonSerializer.Serialize(new
+    {
+        DisplayName = "Stellar Blade", InstallLocation = sb, LaunchExecutable = "SB.exe",
+        CatalogNamespace = "ns", CatalogItemId = "item", AppName = "Stellar", AppCategories = new[] { "public", "games" },
+    }));
+    File.WriteAllText(Path.Combine(epic, "b.item"), JsonSerializer.Serialize(new
+    {
+        DisplayName = "Unreal Engine", InstallLocation = sb, AppCategories = new[] { "engines" },
+    }));
+    var epicJuegos = GameLibrary.Epic(epic).ToList();
+    Comprobar(epicJuegos is [{ Name: "Stellar Blade", ProcessName: "SB.exe", LaunchUri: var uri }] && uri!.StartsWith("com.epicgames.launcher://apps/ns%3Aitem%3AStellar"),
+        $"Epic: detecta el juego con su .exe y enlace, e ignora lo que no es juego [{string.Join(", ", epicJuegos.Select(j => j.Name))}]");
+}
+finally
+{
+    Directory.Delete(falso, recursive: true);
+}
+
+// Escaneo real de este equipo (solo lectura): informativo, no falla si no hay tiendas.
+var relojJuegos = Stopwatch.StartNew();
+var instalados = GameLibrary.Scan();
+Console.WriteLine($"      en este equipo: {instalados.Count} juegos ({string.Join(", ", instalados.GroupBy(j => j.Store).Select(g => $"{g.Key} {g.Count()}"))}) en {relojJuegos.Elapsed.TotalSeconds:0.0} s");
+foreach (var instalado in instalados.Take(8))
+    Console.WriteLine($"        {instalado.Store,-6} {instalado.Name}  →  {instalado.ProcessName ?? "(.exe desconocido)"}");
 
 Console.WriteLine(fallos == 0 ? "\nTodo correcto." : $"\n{fallos} prueba(s) fallaron.");
 return fallos == 0 ? 0 : 1;

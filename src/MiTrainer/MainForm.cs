@@ -5,7 +5,7 @@ using MiTrainer.UI;
 
 namespace MiTrainer;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     const int WM_HOTKEY = 0x0312;
     const int MaxShownResults = 200;
@@ -26,10 +26,12 @@ public sealed class MainForm : Form
     readonly ComboBox _processBox = Theme.Input(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250 });
 
     // Navegación
+    readonly PillButton _navGames = new("Mis juegos") { Nav = true, Width = 186, Height = 42 };
     readonly PillButton _navCheats = new("Cheats") { Nav = true, Width = 186, Height = 42 };
     readonly PillButton _navScanner = new("Escáner") { Nav = true, Width = 186, Height = 42 };
     readonly PillButton _navPointers = new("Punteros") { Nav = true, Width = 186, Height = 42 };
-    readonly Panel _cheatsPage = new() { Dock = DockStyle.Fill };
+    readonly Panel _gamesPage = new() { Dock = DockStyle.Fill };
+    readonly Panel _cheatsPage = new() { Dock = DockStyle.Fill, Visible = false };
     readonly Panel _scannerPage = new() { Dock = DockStyle.Fill, Visible = false };
     readonly Panel _pointersPage = new() { Dock = DockStyle.Fill, Visible = false };
 
@@ -108,10 +110,12 @@ public sealed class MainForm : Form
         ForeColor = Theme.Text;
         Font = Theme.Body;
 
+        BuildGamesPage();
         BuildCheatsPage();
         BuildScannerPage();
         BuildPointersPage();
         var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24, 4, 24, 20) };
+        content.Controls.Add(_gamesPage);
         content.Controls.Add(_cheatsPage);
         content.Controls.Add(_scannerPage);
         content.Controls.Add(_pointersPage);
@@ -122,7 +126,7 @@ public sealed class MainForm : Form
         ResumeLayout(true);
 
         SetStatus("Sin conectar", Theme.Danger);
-        ShowPage(_cheatsPage);
+        ShowPage(_gamesPage);
 
         _freezeTimer.Tick += (_, _) =>
         {
@@ -142,7 +146,8 @@ public sealed class MainForm : Form
         base.OnLoad(e);
         LoadProcessList();
         LoadProfileList();
-        ActiveControl = _cardsPanel; // que ningún desplegable aparezca resaltado al abrir
+        ActiveControl = _gamesPanel; // que ningún desplegable aparezca resaltado al abrir
+        _ = LoadGamesAsync();
         _freezeTimer.Start();
         _watchTimer.Start();
         _resultsTimer.Start();
@@ -167,9 +172,11 @@ public sealed class MainForm : Form
         logo.Controls.Add(new Label { Text = "MiTrainer", AutoSize = true, Font = Theme.Logo, ForeColor = Theme.Text, Location = new Point(46, 24) });
 
         var nav = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(12, 0, 0, 0) };
+        _navGames.Click += (_, _) => ShowPage(_gamesPage);
         _navCheats.Click += (_, _) => ShowPage(_cheatsPage);
         _navScanner.Click += (_, _) => ShowPage(_scannerPage);
         _navPointers.Click += (_, _) => ShowPage(_pointersPage);
+        nav.Controls.Add(_navGames);
         nav.Controls.Add(_navCheats);
         nav.Controls.Add(_navScanner);
         nav.Controls.Add(_navPointers);
@@ -360,12 +367,11 @@ public sealed class MainForm : Form
 
     void ShowPage(Panel page)
     {
-        _cheatsPage.Visible = page == _cheatsPage;
-        _scannerPage.Visible = page == _scannerPage;
-        _pointersPage.Visible = page == _pointersPage;
-        _navCheats.Selected = page == _cheatsPage;
-        _navScanner.Selected = page == _scannerPage;
-        _navPointers.Selected = page == _pointersPage;
+        foreach (var (p, nav) in new[] { (_gamesPage, _navGames), (_cheatsPage, _navCheats), (_scannerPage, _navScanner), (_pointersPage, _navPointers) })
+        {
+            p.Visible = p == page;
+            nav.Selected = p == page;
+        }
     }
 
     void SetStatus(string text, Color color) => _statusPill.Set(text, color);
@@ -525,6 +531,7 @@ public sealed class MainForm : Form
         }
         _profileInfo.Text = $"✓ Guardado en {Path.GetFileName(path)}";
         UpdateTitle();
+        RefreshGameProfiles();
     }
 
     string CheatCountText() => _cheats.Count == 1 ? "1 cheat" : $"{_cheats.Count} cheats";
@@ -573,6 +580,7 @@ public sealed class MainForm : Form
         {
             _profile.Save(_profilePath);
             _profileInfo.Text = $"{CheatCountText()} · ✓ guardado";
+            RefreshGameProfiles();
         }
         catch (Exception ex)
         {

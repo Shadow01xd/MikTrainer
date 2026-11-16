@@ -126,6 +126,31 @@ void Ejecutar()
         }
         lienzo.Save(Path.Combine(capturas, "tarjetas.png"));
         cheats[0].Disable(mem);
+
+        // ---------- Mis juegos: tarjetas de los juegos instalados de verdad ----------
+        var juegos = GameLibrary.Scan();
+        var conIcono = juegos.Select(j => (Juego: j, Icono: GameCard.LoadIcon(j.Executable))).ToList();
+        Comprobar(juegos.Count == 0 || conIcono.Count(j => j.Icono != null) >= juegos.Count * 0.8,
+            $"Mis juegos: {juegos.Count} juegos, {conIcono.Count(j => j.Icono != null)} con icono");
+        if (juegos.Count > 0)
+        {
+            var muestra = conIcono.Take(7).ToList();
+            using var lista = new Bitmap(780, muestra.Count * 72);
+            using (var g = Graphics.FromImage(lista)) g.Clear(Theme.Background);
+            for (int i = 0; i < muestra.Count; i++)
+            {
+                using var card = new GameCard(muestra[i].Juego, muestra[i].Icono) { Width = 780 };
+                if (i == 2) card.SetProfile("perfil.json", 3); // así se ve un juego con perfil
+                if (i == 4) card.SetProfile("perfil.json", 0);
+                card.CreateControl();
+                card.PerformLayout();
+                using var bmp = new Bitmap(card.Width, card.Height);
+                card.DrawToBitmap(bmp, card.ClientRectangle);
+                using var g = Graphics.FromImage(lista);
+                g.DrawImage(bmp, 0, i * 72);
+            }
+            lista.Save(Path.Combine(capturas, "mis-juegos.png"));
+        }
         Comprobar(true, "capturas guardadas en " + capturas);
     }
     catch (Exception ex)

@@ -29,6 +29,18 @@ dotnet run --project src/MiTrainer
 5. Doble clic en el resultado → se añade como cheat "congelar" con atajo F1
 6. Pestaña **Cheats**: márcalo o pulsa F1. Recibe daño: la vida no baja
 
+## Mis juegos
+
+La primera página lista los juegos instalados en **Steam**, **Epic** y **GOG** (leyendo sus manifiestos
+y el registro, sin conectarse a internet), con su icono y su `.exe`:
+
+- **Jugar**: lo abre desde su tienda y deja listo su perfil; MiTrainer se conecta solo cuando arranca
+- **Crear perfil** / **Ver cheats**: crea un perfil con el `.exe` ya puesto, o abre el que ya tiene
+- Un juego "tiene perfil" si algún perfil usa su `.exe` o su nombre
+
+En Steam el `.exe` se adivina (el más grande que no sea instalador/lanzador, con preferencia por el que
+se parece al nombre del juego o es el `-Shipping` de Unreal). Si falla, cámbialo en el JSON del perfil.
+
 ## Crear y editar cheats
 
 - **+ Nuevo cheat** abre el editor: nombre, tipo, atajo (haz clic y pulsa la combinación), módulo,
