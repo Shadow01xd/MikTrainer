@@ -1,0 +1,46 @@
+// Perfil de ejemplo. Cópialo, cámbiale el nombre y pon los datos de tu juego.
+//
+// Tipos de cheat:
+//   "congelar" → escribe "valor" sin parar (vida infinita, munición infinita...)
+//   "fijar"    → escribe "valor" una sola vez (dinero, nivel...)
+//   "parche"   → busca "patron" en el código del juego y lo reemplaza por "bytes"
+//
+// Direcciones y offsets van en hexadecimal, igual que en Cheat Engine.
+// "MiJuego.exe"+1A2B3C con offsets 10, 8  →  "modulo": "MiJuego.exe", "direccion": "1A2B3C", "offsets": ["10", "8"]
+// tipoValor: int, long, float o double
+// atajo: F1, Ctrl+F2, Alt+Shift+NumPad1...
+{
+  "juego": "Mi Juego",
+  "proceso": "MiJuego.exe",
+  "cheats": [
+    {
+      "nombre": "Vida infinita",
+      "atajo": "F1",
+      "tipo": "congelar",
+      "modulo": "MiJuego.exe",
+      "direccion": "1A2B3C",
+      "offsets": ["10", "8"],
+      "tipoValor": "int",
+      "valor": 100
+    },
+    {
+      "nombre": "Dinero = 99999",
+      "atajo": "F2",
+      "tipo": "fijar",
+      "modulo": "MiJuego.exe",
+      "direccion": "2B3C4D",
+      "offsets": ["20"],
+      "tipoValor": "int",
+      "valor": 99999
+    },
+    {
+      "nombre": "Munición infinita",
+      "atajo": "F3",
+      "tipo": "parche",
+      // instrucción que resta munición: 89 4B 10 = mov [rbx+10],ecx → la cambiamos por 3 NOP
+      "patron": "48 8B ?? 24 89 4B 10",
+      "desplazamiento": 4,
+      "bytes": "90 90 90"
+    }
+  ]
+}
