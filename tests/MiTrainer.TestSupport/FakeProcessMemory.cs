@@ -22,6 +22,12 @@ public sealed class FakeProcessMemory : IProcessMemory
     public bool Is32Bit { get; init; }
     public bool Disposed { get; private set; }
 
+    /// <summary>Simula que Windows rechaza las escrituras (memoria protegida, proceso bloqueado...).</summary>
+    public bool FailWrites { get; set; }
+
+    /// <summary>Se llama antes de cada lectura (desde el hilo que lee): sirve para pausar un escaneo a mitad.</summary>
+    public Action? BeforeRead { get; set; }
+
     /// <summary>Añade una región de memoria rellena de ceros.</summary>
     public FakeProcessMemory AddRegion(long start, int size, bool writable = true, bool executable = false)
     {
@@ -56,6 +62,7 @@ public sealed class FakeProcessMemory : IProcessMemory
 
     public bool TryRead(long address, byte[] buffer, int count)
     {
+        BeforeRead?.Invoke();
         if (!IsAttached || Find(address, count) is not { } block) return false;
         Array.Copy(block.Data, address - block.Start, buffer, 0, count);
         return true;
@@ -63,7 +70,7 @@ public sealed class FakeProcessMemory : IProcessMemory
 
     public bool Write(long address, byte[] data)
     {
-        if (!IsAttached || Find(address, data.Length) is null) return false;
+        if (!IsAttached || FailWrites || Find(address, data.Length) is null) return false;
         Copy(address, data);
         return true;
     }

@@ -16,7 +16,13 @@ public sealed class InMemoryPointerResultsRepository : IPointerResultsRepository
     readonly Dictionary<string, PointerScanResults> _files = new(StringComparer.OrdinalIgnoreCase);
 
     public string Folder => "punteros";
+    public int SaveCount { get; private set; }
     public string AutoSavePathFor(string processName) => Path.Combine(Folder, processName + ".json");
-    public void Save(string path, PointerScanResults results) => _files[path] = results;
+
+    public void Save(string path, PointerScanResults results)
+    {
+        _files[path] = results;
+        SaveCount++;
+    }
     public PointerScanResults Load(string path) => _files[path];
 }

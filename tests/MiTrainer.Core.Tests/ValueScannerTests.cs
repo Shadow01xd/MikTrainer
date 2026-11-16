@@ -8,7 +8,6 @@ public class ValueScannerTests
 {
     const long Heap = 0x10_0000;
     readonly FakeProcessMemory _game = new FakeProcessMemory().AddRegion(Heap, 0x1000);
-    readonly ValueScanner _scanner = new();
 
     [Fact]
     public void Primer_escaneo_encuentra_todas_las_direcciones_con_el_valor()
@@ -17,9 +16,9 @@ public class ValueScannerTests
         _game.SetInt32(Heap + 0x80, 100);
         _game.SetInt32(Heap + 0x90, 99);
 
-        _scanner.FirstScan(_game, ValueKind.Int32, 100);
+        var scan = ValueScanner.First(_game, ValueKind.Int32, 100);
 
-        Assert.Equal([Heap + 0x10, Heap + 0x80], _scanner.Addresses);
+        Assert.Equal([Heap + 0x10, Heap + 0x80], scan.Addresses);
     }
 
     [Fact]
@@ -28,13 +27,14 @@ public class ValueScannerTests
         long vida = Heap + 0x10, otro = Heap + 0x80;
         _game.SetInt32(vida, 100);
         _game.SetInt32(otro, 100);
-        _scanner.FirstScan(_game, ValueKind.Int32, 100);
+        var first = ValueScanner.First(_game, ValueKind.Int32, 100);
 
         _game.SetInt32(vida, 93); // recibimos daño
-        _scanner.NextScan(_game, ScanMode.Decreased, 0);
+        var next = ValueScanner.Next(first, _game, ScanMode.Decreased, 0);
 
-        Assert.Equal([vida], _scanner.Addresses);
-        Assert.Equal(93, _scanner.Values[0]);
+        Assert.Equal([vida], next.Addresses);
+        Assert.Equal(93, next.Values[0]);
+        Assert.Equal(2, first.Count); // el escaneo anterior no cambia
     }
 
     [Theory]
@@ -46,12 +46,12 @@ public class ValueScannerTests
     public void Cada_modo_compara_con_el_valor_anterior(ScanMode mode, double target, bool kept)
     {
         _game.SetInt32(Heap, 10);
-        _scanner.FirstScan(_game, ValueKind.Int32, 10);
+        var first = ValueScanner.First(_game, ValueKind.Int32, 10);
         _game.SetInt32(Heap, 50);
 
-        _scanner.NextScan(_game, mode, target);
+        var next = ValueScanner.Next(first, _game, mode, target);
 
-        Assert.Equal(kept, _scanner.Addresses.Contains(Heap));
+        Assert.Equal(kept, next.Addresses.Contains(Heap));
     }
 
     [Fact]
@@ -59,9 +59,9 @@ public class ValueScannerTests
     {
         _game.SetFloat(Heap + 4, 99.7f); // en el juego se ve "100"
 
-        _scanner.FirstScan(_game, ValueKind.Float, 100);
+        var scan = ValueScanner.First(_game, ValueKind.Float, 100);
 
-        Assert.Contains(Heap + 4, _scanner.Addresses);
+        Assert.Contains(Heap + 4, scan.Addresses);
     }
 
     [Fact]
@@ -70,8 +70,8 @@ public class ValueScannerTests
         _game.AddRegion(0x20_0000, 0x100, writable: false);
         _game.SetInt32(0x20_0000, 777);
 
-        _scanner.FirstScan(_game, ValueKind.Int32, 777);
+        var scan = ValueScanner.First(_game, ValueKind.Int32, 777);
 
-        Assert.Empty(_scanner.Addresses);
+        Assert.Empty(scan.Addresses);
     }
 }

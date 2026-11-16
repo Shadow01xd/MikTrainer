@@ -6,8 +6,7 @@ namespace MiTrainer.Core.Cheats;
 /// <summary>Un cheat en ejecución: sabe activarse, desactivarse y mantener su valor.</summary>
 public sealed class Cheat(CheatDefinition definition)
 {
-    long _patchAddress;
-    byte[]? _originalBytes;
+    PendingRestore? _patch; // parche aplicado: dónde y qué bytes había antes
 
     public CheatDefinition Definition { get; } = definition;
     public bool Enabled { get; private set; }
@@ -15,12 +14,22 @@ public sealed class Cheat(CheatDefinition definition)
     /// <summary>El último intento de activarlo falló (el motivo está en <see cref="Status"/>).</summary>
     public bool Failed { get; private set; }
 
+    /// <summary>
+    /// Se intentó deshacer el parche y no se pudo: el juego sigue modificado.
+    /// <see cref="PendingRestore"/> guarda lo necesario para deshacerlo.
+    /// </summary>
+    public bool RestoreFailed { get; private set; }
+
+    /// <summary>Datos para deshacer el parche cuya restauración falló (null si no hay nada pendiente).</summary>
+    public PendingRestore? PendingRestore => RestoreFailed ? _patch : null;
+
     /// <summary>Texto para el usuario: qué está haciendo o por qué falló.</summary>
     public string Status { get; private set; } = "";
 
     /// <summary>Activa el cheat. En "fijar" escribe una vez y queda desactivado. Nunca lanza: los errores van a Status.</summary>
     public bool Enable(IProcessMemory memory)
     {
+        if (RestoreFailed) return false; // primero hay que deshacer el parche anterior (RetryRestore)
         Failed = false;
         try
         {
@@ -48,23 +57,56 @@ public sealed class Cheat(CheatDefinition definition)
         }
     }
 
-    /// <summary>Desactiva el cheat; un parche vuelve a dejar los bytes originales.</summary>
-    public void Disable(IProcessMemory? memory)
+    /// <summary>
+    /// Desactiva el cheat; un parche vuelve a dejar los bytes originales. Si no se pueden escribir, queda en
+    /// «Restauración fallida» conservando los datos para reintentarlo, y devuelve false.
+    /// </summary>
+    public bool Disable(IProcessMemory? memory)
     {
-        if (Enabled && _originalBytes != null && memory is { IsAttached: true })
-            memory.Write(_patchAddress, _originalBytes);
-        _originalBytes = null;
+        // Sin proceso conectado el juego se cerró: con él desapareció el parche y no hay nada que deshacer.
+        if (Enabled && _patch is { } patch && memory is { IsAttached: true } && !patch.TryRestore(memory))
+        {
+            MarkRestoreFailed(patch);
+            return false;
+        }
+        _patch = null;
         Enabled = false;
         Failed = false;
         Status = "Desactivado";
+        return true;
     }
 
-    /// <summary>El juego se cerró: olvidamos el estado sin tocar la memoria.</summary>
+    /// <summary>Vuelve a intentar deshacer un parche cuya restauración falló.</summary>
+    public bool RetryRestore(IProcessMemory? memory)
+    {
+        if (!RestoreFailed || _patch is not { } patch) return true;
+        if (memory is null || !patch.TryRestore(memory))
+        {
+            MarkRestoreFailed(patch);
+            return false;
+        }
+        _patch = null;
+        RestoreFailed = false;
+        Failed = false;
+        Status = "Restaurado: el juego vuelve a estar como antes";
+        return true;
+    }
+
+    void MarkRestoreFailed(PendingRestore patch)
+    {
+        Enabled = false;
+        Failed = true;
+        RestoreFailed = true;
+        Status = $"Restauración fallida: el juego sigue modificado en {patch.Describe()}. Pulsa para reintentar";
+    }
+
+    /// <summary>El juego se cerró: olvidamos el estado (y el parche, que se fue con el proceso) sin tocar la memoria.</summary>
     public void Reset()
     {
-        _originalBytes = null;
+        _patch = null;
         Enabled = false;
         Failed = false;
+        RestoreFailed = false;
         Status = "";
     }
 
@@ -106,9 +148,9 @@ public sealed class Cheat(CheatDefinition definition)
         if (found == 0) throw new InvalidOperationException("Patrón no encontrado (¿otra versión del juego?)");
 
         long address = found + Definition.PatternOffset;
-        _originalBytes = memory.Read(address, bytes.Length) ?? throw new InvalidOperationException("No se pudo leer la memoria");
+        byte[] original = memory.Read(address, bytes.Length) ?? throw new InvalidOperationException("No se pudo leer la memoria");
         if (!memory.Write(address, bytes)) throw new InvalidOperationException("No se pudo escribir la memoria");
-        _patchAddress = address;
+        _patch = new PendingRestore(Definition.Name, memory.ProcessId, memory.ProcessName, address, original);
         Enabled = true;
         Status = $"Activo (parche en 0x{address:X})";
     }

@@ -12,6 +12,7 @@ sealed class MainForm : Form
     readonly Label _title = new() { AutoSize = true, Font = Theme.PageTitle, ForeColor = Theme.Text, Location = new Point(22, 14) };
     readonly StatusPill _status = new() { Location = new Point(26, 56) };
     readonly ComboBox _processBox = Theme.Input(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250 });
+    readonly PillButton _confirm;
     readonly List<(Page Page, PillButton Nav)> _pages = [];
     readonly GamesPage _games;
     readonly CheatsPage _cheats;
@@ -25,6 +26,8 @@ sealed class MainForm : Form
     public MainForm(AppServices services)
     {
         _services = services;
+        _confirm = Ui.Pill("Confirmar", services.Session.ConfirmSession, primary: true);
+        _confirm.Visible = false;
         _games = new GamesPage(services);
         _cheats = new CheatsPage(services);
         _scanner = new ScannerPage(services);
@@ -70,6 +73,7 @@ sealed class MainForm : Form
         Session.StatusChanged += (_, status) => _status.Display(status);
         Session.ProfileChanged += (_, _) => UpdateTitle();
         Session.ConnectionChanged += (_, _) => UpdateTitle();
+        Session.StateChanged += (_, _) => UpdateConfirmButton();
         _freezeTimer.Tick += (_, _) => Session.Tick();
         _watchTimer.Tick += (_, _) => Session.Watch();
     }
@@ -93,10 +97,31 @@ sealed class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        Session.DisableAll(); // los parches devuelven el juego a como estaba
+        if (!ConfirmCloseWithPendingRestores())
+        {
+            e.Cancel = true;
+            return;
+        }
         _freezeTimer.Stop();
         _watchTimer.Stop();
-        Session.DisableAll(); // los parches devuelven el juego a como estaba
         base.OnFormClosing(e);
+    }
+
+    /// <summary>
+    /// Si algún parche no se pudo deshacer, el juego sigue modificado: avisamos con los datos para
+    /// deshacerlo a mano antes de cerrar (al cerrar MiTrainer ya no se podría reintentar).
+    /// </summary>
+    bool ConfirmCloseWithPendingRestores()
+    {
+        var pending = Session.AllPendingRestores().ToList();
+        if (pending.Count == 0) return true;
+        string details = string.Join("\n", pending.Select(p => $"• {p.CheatName}: {p.Describe()}"));
+        var answer = MessageBox.Show(this,
+            $"Restauración fallida: estos parches siguen aplicados en el juego.\n\n{details}\n\n" +
+            "Si cierras MiTrainer no podrá reintentarlo; tendrás que reiniciar el juego o escribir esos bytes a mano.\n¿Cerrar de todos modos?",
+            "MiTrainer", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+        return answer == DialogResult.Yes;
     }
 
     // ================= Páginas =================
@@ -152,12 +177,20 @@ sealed class MainForm : Form
         var refresh = Ui.Pill("↻", LoadProcessList);
         refresh.Width = 38;
         var connection = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, Padding = new Padding(0, 22, 20, 0), WrapContents = false };
-        connection.Controls.AddRange([_processBox, refresh, Ui.Pill("Conectar", ConnectSelected, primary: true)]);
+        connection.Controls.AddRange([_confirm, _processBox, refresh, Ui.Pill("Conectar", ConnectSelected, primary: true)]);
 
         header.Controls.Add(connection);
         header.Controls.Add(_title);
         header.Controls.Add(_status);
         return header;
+    }
+
+    /// <summary>Con la sesión sin confirmar, ofrece vincular el perfil al proceso conectado.</summary>
+    void UpdateConfirmButton()
+    {
+        bool awaiting = Session.State == SessionState.AwaitingConfirmation;
+        if (awaiting) _confirm.Text = $"Usar este perfil con {Session.Memory!.ProcessName}.exe";
+        _confirm.Visible = awaiting;
     }
 
     void UpdateTitle() =>

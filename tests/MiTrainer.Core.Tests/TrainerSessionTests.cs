@@ -53,7 +53,7 @@ public class TrainerSessionTests
         _session.Toggle(cheat);
 
         Assert.True(cheat.Failed);
-        Assert.Equal("Conecta el juego primero", cheat.Status);
+        Assert.Equal("Abre juego.exe para usar este perfil", cheat.Status);
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class TrainerSessionTests
         var game = _connector.Start(NewGame());
         game.SetBytes(0x40_0100, 0x29, 0x4B, 0x10);
         _session.Connect(game.ProcessId);
-        _session.OpenProfile(new GameProfile { Cheats = [new CheatDefinition { Name = "Parche", Type = CheatType.Patch, Pattern = "29 4B 10", Bytes = "90 90 90" }] }, null);
+        _session.OpenProfile(new GameProfile { Process = "juego.exe", Cheats = [new CheatDefinition { Name = "Parche", Type = CheatType.Patch, Pattern = "29 4B 10", Bytes = "90 90 90" }] }, null);
         _session.Toggle(_session.Cheats[0]);
 
         _session.ReplaceCheat(_session.Cheats[0], _session.Cheats[0].Definition with { Name = "Otro nombre" });

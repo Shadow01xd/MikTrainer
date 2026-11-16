@@ -75,9 +75,39 @@ la interfaz **llama a sus métodos** y **escucha sus eventos**.
 | Evento | Cuándo | Quién lo escucha |
 |---|---|---|
 | `ConnectionChanged` | Nos conectamos o el juego se cierra | Escáner (se reinicia), Punteros (carga los guardados), título |
+| `StateChanged` | El perfil queda vinculado o bloqueado | Botón «Usar este perfil con X.exe» de la cabecera |
 | `ProfileChanged` | Se abre un perfil o cambian sus cheats | Cheats (tarjetas), Mis juegos (quién tiene perfil), atajos |
 | `CheatChanged` | Un cheat se activa, falla... | La tarjeta de ese cheat |
 | `StatusChanged` | Mensaje para la cabecera | La pastilla de estado |
+
+#### Vínculo perfil ↔ proceso
+
+Los cheats de un perfil solo se activan sobre el proceso al que ese perfil está vinculado. `State` lo resume:
+
+| Estado | Cuándo | Opciones |
+|---|---|---|
+| `Disconnected` | No hay juego conectado | Bloqueadas («Abre juego.exe para usar este perfil») |
+| `AwaitingConfirmation` | Conectado, pero el perfil no indica ejecutable o indica otro | Bloqueadas; la cabecera ofrece «Usar este perfil con X.exe» (`ConfirmSession`), que corrige y guarda el `"proceso"` del perfil |
+| `Ready` | El ejecutable del perfil coincide con el del proceso (se confirma solo) o el usuario lo confirmó | Se pueden activar |
+
+Abrir otro perfil o conectarse a otro proceso desactiva los cheats activos y vuelve a evaluar el vínculo. Si el
+proceso del perfil aparece mientras estamos conectados a otro, la sesión se pasa a él sola (`Watch`).
+
+#### Tareas atadas a la conexión
+
+Los escaneos y búsquedas de punteros empiezan con `BeginOperation()`, que devuelve la conexión, su memoria y un
+`CancellationToken`. Cada conexión nueva (o el cierre del juego) cancela ese token y hace que `IsCurrent(op)` sea
+falso: la página descarta el resultado sin mostrarlo ni guardarlo. Cambiar de perfil no las invalida, porque las
+direcciones dependen del proceso, no del perfil. Por eso `ValueScanner` devuelve `ScanResults` inmutables: el
+resultado solo se adopta si la tarea sigue siendo la actual.
+
+#### Parches que no se pueden deshacer
+
+Si al desactivar un parche no se pueden escribir los bytes originales, el cheat queda en «Restauración fallida» y
+conserva un `PendingRestore` (proceso, dirección y bytes originales). Pulsar el cheat lo reintenta; si el cheat sale
+del perfil, la sesión guarda el `PendingRestore` y lo reintenta en cada `Watch()` sobre el mismo proceso. Si el juego
+se cierra, se olvida (el parche desapareció con el proceso). Al cerrar MiTrainer con parches pendientes, se avisa
+con los datos para deshacerlos a mano.
 
 La sesión necesita dos "latidos" que le da `MainForm`: `Tick()` cada 50 ms (mantener valores congelados) y
 `Watch()` cada 1,5 s (detectar que el juego se cerró o se abrió y conectarse solo).

@@ -16,11 +16,10 @@ public sealed class WindowsProcessMemoryTests : IDisposable
     [Fact]
     public void El_escaner_encuentra_la_vida_real_del_juego()
     {
-        var scanner = new ValueScanner();
-        scanner.FirstScan(_game.Memory, ValueKind.Int32, _game.Life);
-        for (int i = 0; i < 6 && scanner.Count > 1; i++) scanner.NextScan(_game.Memory, ScanMode.Exact, _game.TakeDamage());
+        var scan = ValueScanner.First(_game.Memory, ValueKind.Int32, _game.Life);
+        for (int i = 0; i < 6 && scan.Count > 1; i++) scan = ValueScanner.Next(scan, _game.Memory, ScanMode.Exact, _game.TakeDamage());
 
-        Assert.Contains(_game.LifeAddress, scanner.Addresses);
+        Assert.Contains(_game.LifeAddress, scan.Addresses);
     }
 
     [Fact]

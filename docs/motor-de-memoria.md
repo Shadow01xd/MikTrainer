@@ -61,6 +61,8 @@ reemplaza, por ejemplo por `90` (NOP, "no hacer nada") para anular la instrucci�
 - La búsqueda (`PatternScanner`) recorre el módulo indicado en bloques que se solapan, para no perder
   coincidencias en los bordes. `"*"` busca en todo el código cargado.
 - Al activar se guardan los bytes originales; al desactivar (o al cerrar MiTrainer) se restauran.
+  Si Windows no deja escribirlos, el cheat queda en **«Restauración fallida»** y conserva proceso, dirección y bytes
+  originales (`PendingRestore`) para reintentarlo o deshacerlo a mano (ver [arquitectura](arquitectura.md)).
 - Buscar por patrón en vez de por dirección hace que el parche siga funcionando cuando el juego se actualiza,
   mientras esa parte del código no cambie.
 

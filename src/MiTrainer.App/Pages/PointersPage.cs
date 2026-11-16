@@ -9,6 +9,7 @@ namespace MiTrainer.App.Pages;
 sealed class PointersPage : Page
 {
     const int MaxShownResults = 200;
+    internal const string DiscardedMessage = "Resultado descartado: la sesión cambió mientras buscaba (no se guardó)";
 
     readonly TextBox _addressBox = Theme.Input(new TextBox { Width = 140 });
     readonly ComboBox _depthBox = Theme.Input(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 50 });
@@ -63,6 +64,10 @@ sealed class PointersPage : Page
     /// <summary>Tipo del valor al que apuntan las cadenas (para mostrarlo y para los cheats).</summary>
     ValueKind Kind => _results?.Kind ?? _kind;
 
+    // Para las pruebas automáticas
+    internal string StatusText => _status.Text;
+    internal int ResultCount => _results?.Paths.Count ?? 0;
+
     // ================= Conexión =================
 
     // Los resultados se conservan al reiniciar el mismo juego (justo para eso sirven); con otro juego, se cargan los suyos.
@@ -83,14 +88,18 @@ sealed class PointersPage : Page
 
     // ================= Buscar y filtrar =================
 
-    async Task ScanOrCancel()
+    /// <summary>
+    /// Busca cadenas atadas a la conexión actual (o cancela la búsqueda en curso). Si la conexión cambia mientras
+    /// corre, se cancela y el resultado se descarta: ni se muestra ni se guarda.
+    /// </summary>
+    internal async Task ScanOrCancel()
     {
         if (_scanCancel is not null)
         {
             _scanCancel.Cancel();
             return;
         }
-        if (Session.Memory is not { IsAttached: true } memory)
+        if (Session.BeginOperation() is not { } operation)
         {
             _status.Text = "Conecta un proceso primero";
             return;
@@ -101,15 +110,22 @@ sealed class PointersPage : Page
             return;
         }
         int depth = _depthBox.SelectedIndex + 1;
+        var memory = operation.Memory;
 
-        _scanCancel = new CancellationTokenSource();
+        // Se cancela si lo pide el usuario o si cambia la sesión.
+        _scanCancel = CancellationTokenSource.CreateLinkedTokenSource(operation.Cancellation);
         var cancel = _scanCancel.Token;
-        var progress = new Progress<string>(text => _status.Text = text);
+        var progress = new Progress<string>(text => { if (Session.IsCurrent(operation)) _status.Text = text; });
         _scanButton.Text = "Cancelar";
         try
         {
             var timer = Stopwatch.StartNew();
             var paths = await Task.Run(() => PointerScanner.Scan(PointerMap.Build(memory, cancel, progress), target, depth, maxOffset, cancel, progress));
+            if (!Session.IsCurrent(operation))
+            {
+                _status.Text = DiscardedMessage;
+                return;
+            }
             _results = new PointerScanResults(memory.ProcessName, Kind, Filters: 0, DateTime.Now, paths);
             _moduleBases = memory.ModuleBases();
             ShowResults();
@@ -118,7 +134,7 @@ sealed class PointersPage : Page
         }
         catch (OperationCanceledException)
         {
-            _status.Text = "Búsqueda cancelada";
+            _status.Text = operation.Cancellation.IsCancellationRequested ? DiscardedMessage : "Búsqueda cancelada";
         }
         finally
         {
@@ -128,14 +144,14 @@ sealed class PointersPage : Page
         }
     }
 
-    async Task Filter()
+    internal async Task Filter()
     {
         if (_results is not { Paths.Count: > 0 } results)
         {
             _status.Text = "Primero busca punteros";
             return;
         }
-        if (Session.Memory is not { IsAttached: true } memory)
+        if (Session.BeginOperation() is not { } operation)
         {
             _status.Text = "Conecta el juego primero";
             return;
@@ -145,7 +161,13 @@ sealed class PointersPage : Page
             _status.Text = "Escribe la nueva dirección en hexadecimal";
             return;
         }
+        var memory = operation.Memory;
         var kept = await Task.Run(() => PointerScanner.Filter(memory, results.Paths, address => address == target));
+        if (!Session.IsCurrent(operation) || !ReferenceEquals(_results, results))
+        {
+            _status.Text = DiscardedMessage; // cambió la sesión (o los resultados) mientras filtraba
+            return;
+        }
         _results = results with { Paths = kept, Filters = results.Filters + 1, Date = DateTime.Now };
         _moduleBases = memory.ModuleBases();
         ShowResults();
