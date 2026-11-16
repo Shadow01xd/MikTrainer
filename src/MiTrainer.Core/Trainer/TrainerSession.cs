@@ -128,7 +128,7 @@ public sealed class TrainerSession(IProcessConnector connector, IProfileReposito
         {
             foreach (var cheat in _cheats)
             {
-                cheat.Reset();
+                cheat.OnProcessExited(closed.Identity); // conserva lo pendiente de otros procesos
                 CheatChanged?.Invoke(this, cheat);
             }
             _pendingRestores.RemoveAll(p => p.Process == closed.Identity); // el proceso ya no existe: no queda nada que deshacer

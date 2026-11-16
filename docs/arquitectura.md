@@ -108,11 +108,14 @@ resultado solo se adopta si la tarea sigue siendo la actual.
 Si al desactivar un parche no se pueden escribir los bytes originales, el cheat queda en «Restauración fallida» y
 conserva un `PendingRestore` (proceso, dirección y bytes originales). Desde ese momento, pulsarlo, editarlo,
 eliminarlo o volver a desactivarlo solo **reintenta** la restauración: nunca descarta esos datos. Si el cheat sale
-del perfil, la sesión guarda el `PendingRestore` y lo reintenta en cada `Watch()` sobre el mismo proceso.
+del perfil, la sesión guarda el `PendingRestore` y lo reintenta en cada `Watch()` sobre el mismo proceso. Cuando
+se cierra un proceso, solo se olvida lo que era de él: una restauración pendiente de otro juego que sigue abierto
+(p. ej. tras cambiar de proceso a mano) se conserva.
 
 El proceso se identifica con `ProcessIdentity` (PID + hora de inicio), no solo con el PID: Windows reutiliza los PID
 cuando un proceso termina, y una restauración nunca debe escribir en un proceso ajeno. Si la hora de inicio no se
-conoce, la identidad no se da por buena y no se restaura. Si el juego
+conoce, la identidad no se da por buena: por eso un parche **ni siquiera se aplica** sobre un proceso sin identidad
+completa (no se podría deshacer con seguridad). Congelar y fijar valores sí funcionan, porque no hay nada que deshacer. Si el juego
 se cierra, se olvida (el parche desapareció con el proceso). Al cerrar MiTrainer con parches pendientes, se avisa
 con los datos para deshacerlos a mano.
 

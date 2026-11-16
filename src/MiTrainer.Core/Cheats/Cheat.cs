@@ -103,7 +103,18 @@ public sealed class Cheat(CheatDefinition definition)
         Status = $"Restauración fallida: el juego sigue modificado en {patch.Describe()}. Pulsa para reintentar";
     }
 
-    /// <summary>El juego se cerró: olvidamos el estado (y el parche, que se fue con el proceso) sin tocar la memoria.</summary>
+    /// <summary>
+    /// Se cerró el proceso <paramref name="closed"/>: se olvida lo que era de él (el cheat activo y, si su parche
+    /// estaba ahí, la restauración pendiente, que se fue con el proceso). Una restauración pendiente de otro proceso
+    /// que sigue abierto se conserva.
+    /// </summary>
+    public void OnProcessExited(ProcessIdentity closed)
+    {
+        if (RestoreFailed && _patch is { } patch && patch.Process != closed) return;
+        Reset();
+    }
+
+    /// <summary>Olvida todo el estado sin tocar la memoria.</summary>
     public void Reset()
     {
         _patch = null;
@@ -145,6 +156,11 @@ public sealed class Cheat(CheatDefinition definition)
 
     void ApplyPatch(IProcessMemory memory)
     {
+        // Sin identidad completa no podríamos reconocer luego este proceso para deshacer el parche con seguridad:
+        // mejor no aplicarlo que dejar el juego modificado sin vuelta atrás.
+        if (!memory.Identity.IsKnown)
+            throw new InvalidOperationException("No se pudo identificar el proceso (hora de inicio desconocida): el parche no se aplica porque luego no se podría deshacer con seguridad");
+
         var pattern = BytePattern.Parse(Definition.Pattern ?? "");
         byte[] bytes = NumberText.ParseHexBytes(Definition.Bytes);
         long found = PatternScanner.Find(memory, pattern, Definition.Module);

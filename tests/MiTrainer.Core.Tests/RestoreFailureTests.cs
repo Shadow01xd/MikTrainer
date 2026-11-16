@@ -236,4 +236,76 @@ public class RestoreFailureTests
         Assert.False(unknown.IsSameProcessAs(unknown));
         Assert.True(_game.Identity.IsSameProcessAs(_game.Identity));
     }
+
+    // ================= Revisión de 1bcc17b =================
+
+    [Fact]
+    public void Cerrar_otro_juego_no_borra_la_recuperacion_pendiente_del_anterior()
+    {
+        var connector = new FakeProcessConnector();
+        var session = SessionWithAppliedPatch(connector);      // parche aplicado en juego (PID 7)
+        _game.FailWrites = true;
+        session.Toggle(session.Cheats[0]);                      // restauración fallida
+        var other = connector.Start(new FakeProcessMemory { ProcessId = 8, ProcessName = "otro" });
+        session.Connect(other.ProcessId);                       // el usuario cambia de proceso a mano
+
+        connector.Exit(other);                                  // se cierra el otro, no el juego parcheado
+        session.Watch();
+
+        var cheat = session.Cheats[0];
+        Assert.True(cheat.RestoreFailed);
+        Assert.Equal(_game.Identity, cheat.PendingRestore!.Process);
+        Assert.Single(session.AllPendingRestores());
+
+        // y se puede recuperar al volver al juego parcheado
+        _game.FailWrites = false;
+        session.Connect(_game.ProcessId);
+        session.Toggle(cheat);
+        Assert.Equal(Original, _game.Get(Code, 3));
+        Assert.Empty(session.AllPendingRestores());
+    }
+
+    [Fact]
+    public void Cerrar_el_juego_parcheado_si_olvida_su_recuperacion()
+    {
+        var connector = new FakeProcessConnector();
+        var session = SessionWithAppliedPatch(connector);
+        _game.FailWrites = true;
+        session.Toggle(session.Cheats[0]);
+
+        connector.Exit(_game);
+        session.Watch();
+
+        Assert.False(session.Cheats[0].RestoreFailed);
+        Assert.Empty(session.AllPendingRestores()); // el parche desapareció con su proceso
+    }
+
+    [Fact]
+    public void No_se_aplica_un_parche_si_no_se_conoce_la_hora_de_inicio_del_proceso()
+    {
+        var unidentified = new FakeProcessMemory { ProcessId = 7, ProcessName = "juego", StartTime = default };
+        unidentified.AddModule("juego.exe", Exe, 0x1000);
+        unidentified.SetBytes(Code, Original);
+        var cheat = new Cheat(Patch());
+
+        bool applied = cheat.Enable(unidentified);
+
+        Assert.False(applied);
+        Assert.True(cheat.Failed);
+        Assert.Contains("identificar", cheat.Status);
+        Assert.Equal(Original, unidentified.Get(Code, 3)); // no se tocó nada
+        Assert.Null(cheat.PendingRestore);
+    }
+
+    [Fact]
+    public void Sin_hora_de_inicio_los_valores_si_se_pueden_escribir()
+    {
+        // Congelar o fijar no necesitan deshacerse, así que no dependen de la identidad del proceso.
+        var unidentified = new FakeProcessMemory { ProcessId = 7, StartTime = default };
+        unidentified.AddRegion(0x50_0000, 0x100);
+        var cheat = new Cheat(new CheatDefinition { Type = CheatType.Set, Address = "500000", Value = 42 });
+
+        Assert.True(cheat.Enable(unidentified));
+        Assert.Equal(42, unidentified.GetInt32(0x50_0000));
+    }
 }

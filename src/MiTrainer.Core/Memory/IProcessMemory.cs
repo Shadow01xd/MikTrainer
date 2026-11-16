@@ -45,7 +45,10 @@ public readonly record struct ProcessIdentity(int Id, DateTime StartTime)
     /// ¿Es seguro el mismo proceso? Si no se conoce la hora de inicio no se puede asegurar, y se responde que no:
     /// es preferible no restaurar a escribir en un proceso ajeno.
     /// </summary>
-    public bool IsSameProcessAs(ProcessIdentity other) => this == other && StartTime != default;
+    public bool IsSameProcessAs(ProcessIdentity other) => IsKnown && this == other;
+
+    /// <summary>Se conoce la hora de inicio: el proceso se puede reconocer más tarde sin confundirlo con otro.</summary>
+    public bool IsKnown => StartTime != default;
 }
 
 public readonly record struct MemoryRegion(long Start, long Size, bool Writable, bool Executable)
