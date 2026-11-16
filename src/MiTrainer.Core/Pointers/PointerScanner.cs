@@ -53,10 +53,18 @@ public static class PointerScanner
     }
 
     /// <summary>Se queda con las cadenas que siguen cumpliendo la condición (normalmente: "llegan a la nueva dirección").</summary>
-    public static List<PointerPath> Filter(IProcessMemory memory, IEnumerable<PointerPath> paths, Func<long, bool> keep)
+    public static List<PointerPath> Filter(IProcessMemory memory, IEnumerable<PointerPath> paths, Func<long, bool> keep,
+        CancellationToken cancel = default)
     {
         var moduleBases = memory.ModuleBases();
-        return [.. paths.Where(p => p.Resolve(memory, moduleBases) is var address && address != 0 && keep(address))];
+        var kept = new List<PointerPath>();
+        int checkedCount = 0;
+        foreach (var path in paths)
+        {
+            if ((checkedCount++ & 0xFFF) == 0) cancel.ThrowIfCancellationRequested();
+            if (path.Resolve(memory, moduleBases) is var address && address != 0 && keep(address)) kept.Add(path);
+        }
+        return kept;
     }
 
     /// <summary>

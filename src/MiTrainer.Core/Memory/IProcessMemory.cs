@@ -8,6 +8,12 @@ public interface IProcessMemory : IDisposable
 {
     int ProcessId { get; }
 
+    /// <summary>
+    /// Qué proceso concreto es: PID y hora de inicio. El PID solo no basta, porque Windows lo reutiliza
+    /// para otro proceso cuando el original termina.
+    /// </summary>
+    ProcessIdentity Identity { get; }
+
     /// <summary>Nombre del proceso sin extensión ("juego").</summary>
     string ProcessName { get; }
 
@@ -25,8 +31,21 @@ public interface IProcessMemory : IDisposable
     /// <summary>Regiones de memoria reservadas y legibles, ordenadas por dirección.</summary>
     IReadOnlyList<MemoryRegion> GetRegions();
 
-    /// <summary>Módulos cargados (exe y dlls). El primero es siempre el ejecutable principal.</summary>
+    /// <summary>
+    /// Módulos cargados (exe y dlls). El primero es siempre el ejecutable principal.
+    /// No lanza: si el proceso ya no existe, devuelve una lista vacía.
+    /// </summary>
     IReadOnlyList<ModuleInfo> GetModules();
+}
+
+/// <summary>Un proceso concreto: PID más hora de inicio (el PID se reutiliza; la pareja no).</summary>
+public readonly record struct ProcessIdentity(int Id, DateTime StartTime)
+{
+    /// <summary>
+    /// ¿Es seguro el mismo proceso? Si no se conoce la hora de inicio no se puede asegurar, y se responde que no:
+    /// es preferible no restaurar a escribir en un proceso ajeno.
+    /// </summary>
+    public bool IsSameProcessAs(ProcessIdentity other) => this == other && StartTime != default;
 }
 
 public readonly record struct MemoryRegion(long Start, long Size, bool Writable, bool Executable)

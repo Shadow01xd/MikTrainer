@@ -17,6 +17,11 @@ public sealed class FakeProcessMemory : IProcessMemory
     }
 
     public int ProcessId { get; init; } = 1234;
+
+    /// <summary>Hora de inicio inventada; dos memorias con el mismo PID y distinta hora son procesos distintos.</summary>
+    public DateTime StartTime { get; init; } = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+
+    public ProcessIdentity Identity => new(ProcessId, StartTime);
     public string ProcessName { get; init; } = "juego";
     public bool IsAttached { get; set; } = true;
     public bool Is32Bit { get; init; }
@@ -27,6 +32,15 @@ public sealed class FakeProcessMemory : IProcessMemory
 
     /// <summary>Se llama antes de cada lectura (desde el hilo que lee): sirve para pausar un escaneo a mitad.</summary>
     public Action? BeforeRead { get; set; }
+
+    /// <summary>Se llama antes de consultar los módulos (desde el hilo que consulta).</summary>
+    public Action? BeforeGetModules { get; set; }
+
+    /// <summary>
+    /// Simula una implementación cuya consulta de módulos lanza al cerrarse el proceso
+    /// (como <c>Process.Modules</c> en Windows).
+    /// </summary>
+    public bool ModulesThrow { get; set; }
 
     /// <summary>Añade una región de memoria rellena de ceros.</summary>
     public FakeProcessMemory AddRegion(long start, int size, bool writable = true, bool executable = false)
@@ -78,7 +92,11 @@ public sealed class FakeProcessMemory : IProcessMemory
     public IReadOnlyList<MemoryRegion> GetRegions() =>
         [.. _blocks.Select(b => new MemoryRegion(b.Start, b.Data.Length, b.Writable, b.Executable))];
 
-    public IReadOnlyList<ModuleInfo> GetModules() => _modules;
+    public IReadOnlyList<ModuleInfo> GetModules()
+    {
+        BeforeGetModules?.Invoke();
+        return ModulesThrow ? throw new InvalidOperationException("El proceso ya no existe") : _modules;
+    }
 
     public void Dispose() => Disposed = true;
 }

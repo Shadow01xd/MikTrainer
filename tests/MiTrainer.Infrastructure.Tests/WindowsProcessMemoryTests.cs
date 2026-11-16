@@ -88,6 +88,25 @@ public sealed class WindowsProcessMemoryTests : IDisposable
         Assert.True(regions.Zip(regions.Skip(1)).All(pair => pair.First.Start < pair.Second.Start));
     }
 
+    [Fact]
+    public void La_identidad_incluye_la_hora_de_inicio_del_proceso()
+    {
+        var identity = _game.Memory.Identity;
+
+        Assert.Equal(_game.Memory.ProcessId, identity.Id);
+        Assert.NotEqual(default, identity.StartTime);
+        Assert.True(identity.IsSameProcessAs(identity));
+    }
+
+    [Fact]
+    public void Con_el_juego_cerrado_los_modulos_vienen_vacios_en_vez_de_lanzar()
+    {
+        _game.Exit();
+
+        Assert.False(_game.Memory.IsAttached);
+        Assert.Empty(_game.Memory.GetModules());
+    }
+
     /// <summary>8 bytes a cero al final de una sección escribible del exe (sitio libre para un puntero "estático").</summary>
     static long FreeStaticSlot(IProcessMemory memory, ModuleInfo exe)
     {

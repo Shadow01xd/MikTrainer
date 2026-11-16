@@ -31,6 +31,14 @@ public sealed class TestGame : IDisposable
     /// <summary>Dirección real de la vida, que el juego nos chiva para comprobar los escaneos.</summary>
     public long LifeAddress => Convert.ToInt64(Send("a")[6..], 16);
 
+    /// <summary>Cierra el juego y espera a que termine (la memoria sigue abierta, como cuando el usuario sale del juego).</summary>
+    public void Exit()
+    {
+        _process.StandardInput.WriteLine("q");
+        if (!_process.WaitForExit(5000)) _process.Kill();
+        _process.WaitForExit();
+    }
+
     public int TakeDamage() => Life = ReadLife(Send("d"));
     public int ReadLife() => Life = ReadLife(Send("p"));
 

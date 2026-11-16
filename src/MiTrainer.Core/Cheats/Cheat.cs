@@ -63,6 +63,9 @@ public sealed class Cheat(CheatDefinition definition)
     /// </summary>
     public bool Disable(IProcessMemory? memory)
     {
+        // Con la restauración ya fallida el parche sigue aplicado: nunca se descartan sus datos, solo se reintenta.
+        if (RestoreFailed) return RetryRestore(memory);
+
         // Sin proceso conectado el juego se cerró: con él desapareció el parche y no hay nada que deshacer.
         if (Enabled && _patch is { } patch && memory is { IsAttached: true } && !patch.TryRestore(memory))
         {
@@ -150,7 +153,7 @@ public sealed class Cheat(CheatDefinition definition)
         long address = found + Definition.PatternOffset;
         byte[] original = memory.Read(address, bytes.Length) ?? throw new InvalidOperationException("No se pudo leer la memoria");
         if (!memory.Write(address, bytes)) throw new InvalidOperationException("No se pudo escribir la memoria");
-        _patch = new PendingRestore(Definition.Name, memory.ProcessId, memory.ProcessName, address, original);
+        _patch = new PendingRestore(Definition.Name, memory.Identity, memory.ProcessName, address, original);
         Enabled = true;
         Status = $"Activo (parche en 0x{address:X})";
     }

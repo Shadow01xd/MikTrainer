@@ -106,7 +106,7 @@ public class SessionBindingTests
         Assert.True(_session.Cheats[0].Failed);
         Assert.Equal(SessionState.AwaitingConfirmation, _session.State);
 
-        _session.ConfirmSession();
+        _session.ConfirmSession(_session.PendingConfirmation!);
 
         Assert.Equal(SessionState.Ready, _session.State);
         Assert.Equal("juego.exe", _session.Profile.Process);
@@ -120,7 +120,7 @@ public class SessionBindingTests
         _session.OpenProfile(ProfileFor("Launcher.exe"), path: null); // p. ej. se adivinó el lanzador
         _session.Connect(1);
 
-        _session.ConfirmSession();
+        _session.ConfirmSession(_session.PendingConfirmation!);
 
         Assert.Equal(SessionState.Ready, _session.State);
         Assert.Equal("juego.exe", _session.Profile.Process);
@@ -149,9 +149,62 @@ public class SessionBindingTests
 
         _session.OpenProfile(ProfileFor(null), path: null);
         _session.Connect(1);
-        _session.ConfirmSession();
+        _session.ConfirmSession(_session.PendingConfirmation!);
 
         Assert.Equal([SessionState.AwaitingConfirmation, SessionState.Ready], states);
+    }
+
+    // ================= Revisión de 0120a82: caso 1 =================
+
+    [Fact]
+    public void Cambiar_de_proceso_sin_confirmar_avisa_y_cambia_lo_que_se_confirmaria()
+    {
+        _connector.Start(Game(1, "juego"));
+        _connector.Start(Game(2, "otro"));
+        _session.OpenProfile(ProfileFor(null), path: null);
+        _session.Connect(1);
+        Assert.Equal("juego", _session.PendingConfirmation!.ProcessName);
+        int changes = 0;
+        _session.StateChanged += (_, _) => changes++;
+
+        _session.Connect(2); // sigue pendiente de confirmar, pero el proceso es otro
+
+        Assert.Equal(1, changes);
+        Assert.Equal("otro", _session.PendingConfirmation!.ProcessName);
+    }
+
+    [Fact]
+    public void Una_confirmacion_mostrada_para_otro_proceso_se_rechaza()
+    {
+        _connector.Start(Game(1, "juego"));
+        _connector.Start(Game(2, "otro"));
+        _session.OpenProfile(ProfileFor(null), path: null);
+        _session.Connect(1);
+        var shown = _session.PendingConfirmation!; // el botón dice "juego.exe"
+        var statuses = new List<SessionStatus>();
+        _session.StatusChanged += (_, s) => statuses.Add(s);
+
+        _session.Connect(2);                       // la sesión cambia antes de pulsar
+        bool confirmed = _session.ConfirmSession(shown);
+
+        Assert.False(confirmed);
+        Assert.Equal(SessionState.AwaitingConfirmation, _session.State);
+        Assert.Equal("", _session.Profile.Process); // no se guardó el ejecutable del proceso actual
+        Assert.Contains(statuses, s => s.Kind == StatusKind.Error && s.Text.Contains("cambió"));
+    }
+
+    [Fact]
+    public void Una_confirmacion_vieja_de_la_misma_conexion_tampoco_vale_tras_reconectar()
+    {
+        _connector.Start(Game(1, "juego"));
+        _session.OpenProfile(ProfileFor(null), path: null);
+        _session.Connect(1);
+        var shown = _session.PendingConfirmation!;
+
+        _session.Connect(1); // mismo proceso, conexión nueva
+
+        Assert.False(_session.ConfirmSession(shown));
+        Assert.True(_session.ConfirmSession(_session.PendingConfirmation!));
     }
 
     // ================= Tareas atadas a la conexión =================

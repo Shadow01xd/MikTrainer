@@ -17,6 +17,14 @@ public sealed class WindowsProcessMemory : IProcessMemory
         _process = process;
         _handle = handle;
         Is32Bit = IsWow64Process(handle, out bool wow64) && wow64;
+        Identity = new ProcessIdentity(process.Id, ReadStartTime(process));
+    }
+
+    // Sin hora de inicio la identidad queda "desconocida" y nunca se da por buena (ver ProcessIdentity).
+    static DateTime ReadStartTime(Process process)
+    {
+        try { return process.StartTime.ToUniversalTime(); }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException) { return default; }
     }
 
     /// <summary>Abre el proceso para leer y escribir su memoria.</summary>
@@ -33,6 +41,7 @@ public sealed class WindowsProcessMemory : IProcessMemory
     }
 
     public int ProcessId => _process.Id;
+    public ProcessIdentity Identity { get; }
     public string ProcessName => _process.ProcessName;
     public bool Is32Bit { get; }
 
@@ -82,13 +91,20 @@ public sealed class WindowsProcessMemory : IProcessMemory
 
     public IReadOnlyList<ModuleInfo> GetModules()
     {
-        _process.Refresh(); // por si el juego cargó dlls nuevas desde la última vez
-        var main = _process.MainModule;
-        var modules = new List<ModuleInfo>();
-        if (main != null) modules.Add(ToInfo(main));
-        foreach (ProcessModule module in _process.Modules)
-            if (main == null || module.BaseAddress != main.BaseAddress) modules.Add(ToInfo(module));
-        return modules;
+        try
+        {
+            _process.Refresh(); // por si el juego cargó dlls nuevas desde la última vez
+            var main = _process.MainModule;
+            var modules = new List<ModuleInfo>();
+            if (main != null) modules.Add(ToInfo(main));
+            foreach (ProcessModule module in _process.Modules)
+                if (main == null || module.BaseAddress != main.BaseAddress) modules.Add(ToInfo(module));
+            return modules;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+        {
+            return []; // el proceso se cerró (o está cerrándose) mientras se consultaban sus módulos
+        }
     }
 
     static ModuleInfo ToInfo(ProcessModule module) => new(module.ModuleName, module.BaseAddress, module.ModuleMemorySize);

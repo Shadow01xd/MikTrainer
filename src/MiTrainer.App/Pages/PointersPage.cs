@@ -136,6 +136,10 @@ sealed class PointersPage : Page
         {
             _status.Text = operation.Cancellation.IsCancellationRequested ? DiscardedMessage : "Búsqueda cancelada";
         }
+        catch (Exception ex) when (IsFailureOf(operation, ex))
+        {
+            _status.Text = Session.IsCurrent(operation) ? "Error al buscar punteros: " + ex.Message : DiscardedMessage;
+        }
         finally
         {
             _scanCancel.Dispose();
@@ -143,6 +147,13 @@ sealed class PointersPage : Page
             _scanButton.Text = "Buscar punteros";
         }
     }
+
+    /// <summary>
+    /// Errores esperables de una tarea sobre la memoria del juego. Si su sesión ya cambió (p. ej. el juego anterior se
+    /// cerró a mitad), cualquier error es solo una consecuencia de eso: se descarta en vez de llegar a la interfaz.
+    /// </summary>
+    bool IsFailureOf(SessionOperation operation, Exception ex) =>
+        !Session.IsCurrent(operation) || ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException;
 
     internal async Task Filter()
     {
@@ -162,7 +173,21 @@ sealed class PointersPage : Page
             return;
         }
         var memory = operation.Memory;
-        var kept = await Task.Run(() => PointerScanner.Filter(memory, results.Paths, address => address == target));
+        List<PointerPath> kept;
+        try
+        {
+            kept = await Task.Run(() => PointerScanner.Filter(memory, results.Paths, address => address == target, operation.Cancellation));
+        }
+        catch (OperationCanceledException)
+        {
+            _status.Text = DiscardedMessage; // solo se cancela si cambia la sesión
+            return;
+        }
+        catch (Exception ex) when (IsFailureOf(operation, ex))
+        {
+            _status.Text = Session.IsCurrent(operation) ? "Error al filtrar: " + ex.Message : DiscardedMessage;
+            return;
+        }
         if (!Session.IsCurrent(operation) || !ReferenceEquals(_results, results))
         {
             _status.Text = DiscardedMessage; // cambió la sesión (o los resultados) mientras filtraba

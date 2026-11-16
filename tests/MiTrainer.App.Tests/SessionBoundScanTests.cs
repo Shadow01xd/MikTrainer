@@ -128,6 +128,64 @@ public sealed class SessionBoundScanTests : IDisposable
         Assert.Equal(0, _pointerResults.SaveCount); // no se guardó nada con el nombre del proceso equivocado
     });
 
+    // ================= Filtro de punteros (revisión de 0120a82: caso 4) =================
+
+    /// <summary>Página con una cadena estática ya encontrada: "juego.exe"+80 → 18 → 10 = vida.</summary>
+    PointersPage PageWithOneChain(AppServices services)
+    {
+        _first.SetInt64(0x40_0080, Heap + 0x100);
+        _first.SetInt64(Heap + 0x118, Life - 0x10);
+        var page = new PointersPage(services);
+        page.CreateControl();
+        page.Prepare(Life, ValueKind.Int32);
+        var scan = page.ScanOrCancel();
+        WaitFor(() => scan.IsCompleted);
+        Assert.True(page.ResultCount >= 1, page.StatusText);
+        return page;
+    }
+
+    [Fact]
+    public void Filtrar_mientras_el_juego_anterior_se_cierra_descarta_sin_errores() => Sta.Run(() =>
+    {
+        using var hotkeys = new HotkeyBinder(_session);
+        using var page = PageWithOneChain(Services(hotkeys));
+        int chains = page.ResultCount, saves = _pointerResults.SaveCount;
+        using var release = new ManualResetEventSlim();
+        using var started = new ManualResetEventSlim();
+        _first.BeforeGetModules = () =>
+        {
+            started.Set();
+            release.Wait();
+        };
+
+        var filter = page.Filter();
+        Assert.True(started.Wait(5000), "el filtro no consultó los módulos");
+        _session.Connect(2);          // cambiamos de juego...
+        _first.ModulesThrow = true;   // ...y el anterior se cierra mientras se consultaban sus módulos
+        release.Set();
+        WaitFor(() => filter.IsCompleted);
+
+        Assert.True(filter.IsCompletedSuccessfully, filter.Exception?.ToString()); // la excepción no llegó a la interfaz
+        Assert.Equal(PointersPage.DiscardedMessage, page.StatusText);
+        Assert.Equal(saves, _pointerResults.SaveCount);
+    });
+
+    [Fact]
+    public void Si_el_filtro_falla_sin_cambiar_de_sesion_se_muestra_el_error() => Sta.Run(() =>
+    {
+        using var hotkeys = new HotkeyBinder(_session);
+        using var page = PageWithOneChain(Services(hotkeys));
+        int chains = page.ResultCount;
+        _first.ModulesThrow = true;
+
+        var filter = page.Filter();
+        WaitFor(() => filter.IsCompleted);
+
+        Assert.True(filter.IsCompletedSuccessfully, filter.Exception?.ToString());
+        Assert.StartsWith("Error al filtrar", page.StatusText);
+        Assert.Equal(chains, page.ResultCount); // las cadenas no se tocan
+    });
+
     /// <summary>Procesa mensajes (las continuaciones de los await vuelven al hilo de la interfaz) hasta que se cumpla.</summary>
     static void WaitFor(Func<bool> condition)
     {

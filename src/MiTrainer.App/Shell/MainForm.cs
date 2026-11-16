@@ -13,6 +13,7 @@ sealed class MainForm : Form
     readonly StatusPill _status = new() { Location = new Point(26, 56) };
     readonly ComboBox _processBox = Theme.Input(new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250 });
     readonly PillButton _confirm;
+    SessionConfirmation? _shownConfirmation; // lo que dice el botón: al pulsarlo se confirma exactamente esto
     readonly List<(Page Page, PillButton Nav)> _pages = [];
     readonly GamesPage _games;
     readonly CheatsPage _cheats;
@@ -26,7 +27,7 @@ sealed class MainForm : Form
     public MainForm(AppServices services)
     {
         _services = services;
-        _confirm = Ui.Pill("Confirmar", services.Session.ConfirmSession, primary: true);
+        _confirm = Ui.Pill("Confirmar", ConfirmShown, primary: true);
         _confirm.Visible = false;
         _games = new GamesPage(services);
         _cheats = new CheatsPage(services);
@@ -74,6 +75,7 @@ sealed class MainForm : Form
         Session.ProfileChanged += (_, _) => UpdateTitle();
         Session.ConnectionChanged += (_, _) => UpdateTitle();
         Session.StateChanged += (_, _) => UpdateConfirmButton();
+        Session.ConnectionChanged += (_, _) => UpdateConfirmButton();
         _freezeTimer.Tick += (_, _) => Session.Tick();
         _watchTimer.Tick += (_, _) => Session.Watch();
     }
@@ -188,10 +190,21 @@ sealed class MainForm : Form
     /// <summary>Con la sesión sin confirmar, ofrece vincular el perfil al proceso conectado.</summary>
     void UpdateConfirmButton()
     {
-        bool awaiting = Session.State == SessionState.AwaitingConfirmation;
-        if (awaiting) _confirm.Text = $"Usar este perfil con {Session.Memory!.ProcessName}.exe";
-        _confirm.Visible = awaiting;
+        _shownConfirmation = Session.PendingConfirmation;
+        if (_shownConfirmation is { } shown) _confirm.Text = $"Usar este perfil con {shown.ProcessName}.exe";
+        _confirm.Visible = _shownConfirmation is not null;
     }
+
+    /// <summary>Confirma lo que el botón muestra; si la sesión cambió entretanto, la sesión lo rechaza y se refresca el botón.</summary>
+    internal void ConfirmShown()
+    {
+        if (_shownConfirmation is { } shown) Session.ConfirmSession(shown);
+        UpdateConfirmButton();
+    }
+
+    // Para las pruebas automáticas
+    // (no se usa Visible: con la ventana oculta WinForms siempre responde false)
+    internal string? ConfirmButtonText => _shownConfirmation is not null ? _confirm.Text : null;
 
     void UpdateTitle() =>
         _title.Text = !string.IsNullOrWhiteSpace(Session.Profile.Game) ? Session.Profile.Game : Session.Memory?.ProcessName ?? "Ningún juego";

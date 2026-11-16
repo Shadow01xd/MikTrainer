@@ -30,6 +30,9 @@ public enum SessionState
 /// </summary>
 public sealed record SessionOperation(int ConnectionId, IProcessMemory Memory, CancellationToken Cancellation);
 
+/// <summary>Una confirmación concreta: "este perfil es para el proceso <paramref name="ProcessName"/> de la conexión <paramref name="ConnectionId"/>".</summary>
+public sealed record SessionConfirmation(int ConnectionId, string ProcessName);
+
 /// <summary>
 /// El trainer en marcha: a qué juego estamos conectados, qué perfil está abierto y el estado de sus cheats.
 /// No sabe nada de ventanas: la interfaz llama a sus métodos y escucha sus eventos.
@@ -37,7 +40,7 @@ public sealed record SessionOperation(int ConnectionId, IProcessMemory Memory, C
 /// <remarks>
 /// Regla de seguridad: los cheats de un perfil solo se activan sobre el proceso al que ese perfil está vinculado
 /// (<see cref="SessionState.Ready"/>). El vínculo se confirma solo si el ejecutable del perfil coincide con el del
-/// proceso conectado, o a mano con <see cref="ConfirmSession"/>. Cambiar de perfil o de proceso lo rompe.
+/// proceso conectado, o a mano con <see cref="ConfirmSession"/> (atado a la conexión que se le mostró al usuario). Cambiar de perfil o de proceso lo rompe.
 /// </remarks>
 public sealed class TrainerSession(IProcessConnector connector, IProfileRepository profiles) : IDisposable
 {
@@ -47,6 +50,7 @@ public sealed class TrainerSession(IProcessConnector connector, IProfileReposito
     int _connectionId;
     int? _boundConnectionId;
     SessionState _lastState;
+    int _lastStateConnectionId;
 
     public IProcessMemory? Memory { get; private set; }
     public bool IsConnected => Memory is { IsAttached: true };
@@ -127,7 +131,7 @@ public sealed class TrainerSession(IProcessConnector connector, IProfileReposito
                 cheat.Reset();
                 CheatChanged?.Invoke(this, cheat);
             }
-            _pendingRestores.RemoveAll(p => p.ProcessId == closed.ProcessId); // el proceso ya no existe: no queda nada que deshacer
+            _pendingRestores.RemoveAll(p => p.Process == closed.Identity); // el proceso ya no existe: no queda nada que deshacer
             Report("El juego se cerró", StatusKind.Error);
             ReplaceMemory(null);
         }
@@ -184,24 +188,40 @@ public sealed class TrainerSession(IProcessConnector connector, IProfileReposito
     }
 
     /// <summary>
-    /// El usuario confirma que el perfil abierto es para el juego conectado. Si el perfil indicaba otro ejecutable
-    /// (p. ej. el lanzador en vez del juego), se corrige y se guarda.
+    /// Lo que el usuario confirmaría ahora mismo: qué conexión y qué proceso. null si no hay nada que confirmar.
+    /// La interfaz lo muestra y, al pulsar, lo devuelve tal cual a <see cref="ConfirmSession"/>.
     /// </summary>
-    public void ConfirmSession()
+    public SessionConfirmation? PendingConfirmation =>
+        State == SessionState.AwaitingConfirmation ? new SessionConfirmation(_connectionId, Memory!.ProcessName) : null;
+
+    /// <summary>
+    /// El usuario confirma que el perfil abierto es para el proceso que se le mostró. Si desde entonces la sesión
+    /// cambió (otro proceso, otra conexión), no se confirma nada y devuelve false. Si el perfil indicaba otro
+    /// ejecutable (p. ej. el lanzador en vez del juego), se corrige y se guarda.
+    /// </summary>
+    public bool ConfirmSession(SessionConfirmation shown)
     {
-        if (State != SessionState.AwaitingConfirmation) return;
+        if (PendingConfirmation != shown)
+        {
+            Report("La sesión cambió antes de confirmar: revisa a qué juego estás conectado y vuelve a confirmar", StatusKind.Error);
+            return false;
+        }
         Profile.Process = Memory!.ProcessName + ".exe";
         if (ProfilePath is not null) Persist();
         _boundConnectionId = _connectionId;
         ProfileChanged?.Invoke(this, EventArgs.Empty);
         ReportStateIfChanged();
+        return true;
     }
 
+    // También cuenta como cambio pasar de un proceso a otro sin cambiar de estado (p. ej. pendiente → pendiente):
+    // lo que se muestra y lo que se confirmaría ya es otro proceso.
     void ReportStateIfChanged()
     {
         var state = State;
-        if (state == _lastState) return;
+        if (state == _lastState && _connectionId == _lastStateConnectionId) return;
         _lastState = state;
+        _lastStateConnectionId = _connectionId;
         if (state == SessionState.Ready)
             Report($"Perfil vinculado a {Memory!.ProcessName}.exe · PID {Memory.ProcessId} · {(Memory.Is32Bit ? 32 : 64)} bits", StatusKind.Success);
         else if (state == SessionState.AwaitingConfirmation)
@@ -331,7 +351,7 @@ public sealed class TrainerSession(IProcessConnector connector, IProfileReposito
     void RetryPendingRestores()
     {
         if (Memory is not { IsAttached: true } memory) return;
-        foreach (var pending in _pendingRestores.Where(p => p.ProcessId == memory.ProcessId).ToList())
+        foreach (var pending in _pendingRestores.Where(p => memory.Identity.IsSameProcessAs(p.Process)).ToList())
         {
             if (!pending.TryRestore(memory)) continue;
             _pendingRestores.Remove(pending);

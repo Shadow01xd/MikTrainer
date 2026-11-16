@@ -87,7 +87,7 @@ Los cheats de un perfil solo se activan sobre el proceso al que ese perfil está
 | Estado | Cuándo | Opciones |
 |---|---|---|
 | `Disconnected` | No hay juego conectado | Bloqueadas («Abre juego.exe para usar este perfil») |
-| `AwaitingConfirmation` | Conectado, pero el perfil no indica ejecutable o indica otro | Bloqueadas; la cabecera ofrece «Usar este perfil con X.exe» (`ConfirmSession`), que corrige y guarda el `"proceso"` del perfil |
+| `AwaitingConfirmation` | Conectado, pero el perfil no indica ejecutable o indica otro | Bloqueadas; la cabecera ofrece «Usar este perfil con X.exe» (`ConfirmSession`), que corrige y guarda el `"proceso"` del perfil. La confirmación lleva la conexión exacta que vio el usuario (`SessionConfirmation`): si la sesión cambió antes de pulsar, se rechaza |
 | `Ready` | El ejecutable del perfil coincide con el del proceso (se confirma solo) o el usuario lo confirmó | Se pueden activar |
 
 Abrir otro perfil o conectarse a otro proceso desactiva los cheats activos y vuelve a evaluar el vínculo. Si el
@@ -97,15 +97,22 @@ proceso del perfil aparece mientras estamos conectados a otro, la sesión se pas
 
 Los escaneos y búsquedas de punteros empiezan con `BeginOperation()`, que devuelve la conexión, su memoria y un
 `CancellationToken`. Cada conexión nueva (o el cierre del juego) cancela ese token y hace que `IsCurrent(op)` sea
-falso: la página descarta el resultado sin mostrarlo ni guardarlo. Cambiar de perfil no las invalida, porque las
+falso: la página descarta el resultado sin mostrarlo ni guardarlo. Cualquier error de una tarea cuya sesión ya
+cambió (p. ej. el juego anterior se cerró mientras se consultaban sus módulos) también se trata como «descartado»,
+nunca llega a la interfaz. `IProcessMemory.GetModules()` no lanza: con el proceso cerrado devuelve una lista vacía. Cambiar de perfil no las invalida, porque las
 direcciones dependen del proceso, no del perfil. Por eso `ValueScanner` devuelve `ScanResults` inmutables: el
 resultado solo se adopta si la tarea sigue siendo la actual.
 
 #### Parches que no se pueden deshacer
 
 Si al desactivar un parche no se pueden escribir los bytes originales, el cheat queda en «Restauración fallida» y
-conserva un `PendingRestore` (proceso, dirección y bytes originales). Pulsar el cheat lo reintenta; si el cheat sale
-del perfil, la sesión guarda el `PendingRestore` y lo reintenta en cada `Watch()` sobre el mismo proceso. Si el juego
+conserva un `PendingRestore` (proceso, dirección y bytes originales). Desde ese momento, pulsarlo, editarlo,
+eliminarlo o volver a desactivarlo solo **reintenta** la restauración: nunca descarta esos datos. Si el cheat sale
+del perfil, la sesión guarda el `PendingRestore` y lo reintenta en cada `Watch()` sobre el mismo proceso.
+
+El proceso se identifica con `ProcessIdentity` (PID + hora de inicio), no solo con el PID: Windows reutiliza los PID
+cuando un proceso termina, y una restauración nunca debe escribir en un proceso ajeno. Si la hora de inicio no se
+conoce, la identidad no se da por buena y no se restaura. Si el juego
 se cierra, se olvida (el parche desapareció con el proceso). Al cerrar MiTrainer con parches pendientes, se avisa
 con los datos para deshacerlos a mano.
 

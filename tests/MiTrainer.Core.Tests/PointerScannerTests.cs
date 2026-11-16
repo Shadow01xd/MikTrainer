@@ -65,6 +65,18 @@ public class PointerScannerTests
     }
 
     [Fact]
+    public void El_filtro_se_puede_cancelar()
+    {
+        var game = new FakeProcessMemory();
+        game.AddModule("juego.exe", 0x40_0000, 0x1000);
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            PointerScanner.Filter(game, [new PointerPath("juego.exe", 0x80, [0x10])], _ => true, cancel.Token));
+    }
+
+    [Fact]
     public void La_forma_compacta_vuelve_identica()
     {
         var path = new PointerPath("motor.dll", 0x1A2B, [0x18, 0x10, 0x8]);

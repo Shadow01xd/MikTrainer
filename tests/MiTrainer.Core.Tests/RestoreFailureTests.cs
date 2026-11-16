@@ -41,7 +41,7 @@ public class RestoreFailureTests
         Assert.True(cheat.Failed);
         Assert.StartsWith("Restauración fallida", cheat.Status);
         var pending = cheat.PendingRestore!;
-        Assert.Equal(("Munición infinita", 7, Code), (pending.CheatName, pending.ProcessId, pending.Address));
+        Assert.Equal(("Munición infinita", _game.Identity, Code), (pending.CheatName, pending.Process, pending.Address));
         Assert.Equal(Original, pending.OriginalBytes);
         Assert.Contains("29 4B 10", cheat.Status); // el usuario ve qué bytes había
         Assert.Equal([0x90, 0x90, 0x90], _game.Get(Code, 3)); // el juego sigue modificado
@@ -78,7 +78,7 @@ public class RestoreFailureTests
     [Fact]
     public void No_restaura_en_un_proceso_distinto_del_que_se_parcheo()
     {
-        var pending = new PendingRestore("x", ProcessId: 7, "juego", Code, Original);
+        var pending = new PendingRestore("x", _game.Identity, "juego", Code, Original);
         var other = new FakeProcessMemory { ProcessId = 8 };
         other.AddRegion(Exe, 0x1000);
 
@@ -150,5 +150,90 @@ public class RestoreFailureTests
         session.Watch();
 
         Assert.Empty(session.AllPendingRestores()); // el parche desapareció con el proceso
+    }
+
+    // ================= Revisión de 0120a82: casos 2 y 3 =================
+
+    [Fact]
+    public void Desactivar_otra_vez_tras_la_restauracion_fallida_no_borra_los_datos()
+    {
+        var cheat = AppliedPatch();
+        _game.FailWrites = true;
+        cheat.Disable(_game);
+
+        bool restored = cheat.Disable(_game); // segunda llamada (antes borraba la copia)
+
+        Assert.False(restored);
+        Assert.True(cheat.RestoreFailed);
+        Assert.Equal(Original, cheat.PendingRestore!.OriginalBytes);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Editar_o_eliminar_un_parche_con_la_restauracion_fallida_conserva_la_copia(bool edit)
+    {
+        var session = SessionWithAppliedPatch(new FakeProcessConnector());
+        _game.FailWrites = true;
+        session.Toggle(session.Cheats[0]); // restauración fallida
+        var cheat = session.Cheats[0];
+
+        if (edit) session.ReplaceCheat(cheat, cheat.Definition with { Name = "Otro nombre" });
+        else session.RemoveCheat(cheat);
+
+        var pending = Assert.Single(session.AllPendingRestores());
+        Assert.Equal(Original, pending.OriginalBytes);
+        Assert.Equal([0x90, 0x90, 0x90], _game.Get(Code, 3)); // el parche sigue aplicado
+
+        _game.FailWrites = false;
+        session.Watch();
+        Assert.Equal(Original, _game.Get(Code, 3)); // y se pudo recuperar después
+    }
+
+    [Fact]
+    public void No_restaura_en_otro_proceso_que_reutiliza_el_PID()
+    {
+        var cheat = AppliedPatch();
+        _game.FailWrites = true;
+        cheat.Disable(_game);
+
+        // El juego se cerró y Windows le dio el mismo PID a otro proceso (que arrancó después)
+        var reused = new FakeProcessMemory { ProcessId = _game.ProcessId, ProcessName = "juego", StartTime = _game.StartTime.AddMinutes(5) };
+        reused.AddModule("juego.exe", Exe, 0x1000);
+        reused.SetBytes(Code, 0xAA, 0xBB, 0xCC);
+
+        Assert.False(cheat.RetryRestore(reused));
+        Assert.Equal([0xAA, 0xBB, 0xCC], reused.Get(Code, 3));
+        Assert.True(cheat.RestoreFailed);
+    }
+
+    [Fact]
+    public void La_sesion_no_restaura_en_un_proceso_que_reutiliza_el_PID()
+    {
+        var connector = new FakeProcessConnector();
+        var session = SessionWithAppliedPatch(connector);
+        _game.FailWrites = true;
+        session.OpenProfile(new GameProfile { Game = "Otro", Process = "otro.exe" }, path: null); // el pendiente pasa a la sesión
+        connector.Start(new FakeProcessMemory { ProcessId = 99, ProcessName = "otro" });
+        session.Watch();                     // la sesión se va a otro.exe sin ver cerrarse el juego original
+        connector.Exit(_game);
+
+        var reused = connector.Start(new FakeProcessMemory { ProcessId = _game.ProcessId, ProcessName = "juego", StartTime = _game.StartTime.AddMinutes(5) });
+        reused.AddModule("juego.exe", Exe, 0x1000);
+        reused.SetBytes(Code, 0xAA, 0xBB, 0xCC);
+        session.Connect(reused.ProcessId);
+        session.Watch();
+
+        Assert.Equal([0xAA, 0xBB, 0xCC], reused.Get(Code, 3));
+        Assert.Single(session.PendingRestores);
+    }
+
+    [Fact]
+    public void Sin_hora_de_inicio_la_identidad_nunca_se_da_por_buena()
+    {
+        var unknown = new Memory.ProcessIdentity(7, default);
+
+        Assert.False(unknown.IsSameProcessAs(unknown));
+        Assert.True(_game.Identity.IsSameProcessAs(_game.Identity));
     }
 }

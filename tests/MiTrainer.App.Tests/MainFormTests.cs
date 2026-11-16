@@ -50,6 +50,32 @@ public class MainFormTests
         }
     });
 
+    [Fact]
+    public void El_boton_de_confirmar_sigue_al_proceso_conectado() => Sta.Run(() =>
+    {
+        var connector = new FakeProcessConnector();
+        connector.Start(new FakeProcessMemory { ProcessId = 1, ProcessName = "juego" });
+        connector.Start(new FakeProcessMemory { ProcessId = 2, ProcessName = "otro" });
+        var profiles = new InMemoryProfileRepository();
+        profiles.Save(profiles.NewPathFor("Sin ejecutable"), new GameProfile { Game = "Sin ejecutable" });
+        using var session = new TrainerSession(connector, profiles);
+        using var hotkeys = new HotkeyBinder(session);
+        using var form = new MainForm(new AppServices(session, connector, profiles, new InMemoryPointerResultsRepository(), new GameLibrary([]), hotkeys));
+        form.CreateControl();
+        form.Initialize();
+
+        session.Connect(1);
+        Assert.Equal("Usar este perfil con juego.exe", form.ConfirmButtonText);
+
+        session.Connect(2); // sigue pendiente, pero ahora es otro proceso
+        Assert.Equal("Usar este perfil con otro.exe", form.ConfirmButtonText);
+
+        form.ConfirmShown();
+        Assert.Equal(SessionState.Ready, session.State);
+        Assert.Equal("otro.exe", session.Profile.Process);
+        Assert.Null(form.ConfirmButtonText); // ya no hay nada que confirmar
+    });
+
     static IEnumerable<T> FindAll<T>(Control root) where T : Control =>
         root.Controls.Cast<Control>().SelectMany(c => (c is T t ? [t] : Enumerable.Empty<T>()).Concat(FindAll<T>(c)));
 
