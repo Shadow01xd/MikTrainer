@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dobles de prueba compartidos: memoria de proceso falsa, conector falso y repositorio en memoria. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MiTrainer.Core\MiTrainer.Core.csproj" />
+  </ItemGroup>
+
+</Project>

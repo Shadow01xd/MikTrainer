@@ -1,0 +1,10 @@
+<Project>
+  <!-- Opciones comunes de los proyectos de pruebas (además de las de la raíz) -->
+  <Import Project="..\Directory.Build.props" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Para leer la memoria del juego de prueba (64 bits) el proceso de pruebas también tiene que ser de 64 bits -->
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+</Project>

@@ -1,10 +1,25 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/JuegoPrueba/JuegoPrueba.csproj" />
-    <Project Path="src/MiTrainer/MiTrainer.csproj" />
+    <Project Path="src/MiTrainer.Core/MiTrainer.Core.csproj" />
+    <Project Path="src/MiTrainer.Infrastructure/MiTrainer.Infrastructure.csproj" />
+    <Project Path="src/MiTrainer.App/MiTrainer.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Pruebas/Pruebas.csproj" />
-    <Project Path="tests/PruebasUI/PruebasUI.csproj" />
+    <Project Path="tests/MiTrainer.TestSupport/MiTrainer.TestSupport.csproj" />
+    <Project Path="tests/MiTrainer.Core.Tests/MiTrainer.Core.Tests.csproj" />
+    <Project Path="tests/MiTrainer.Infrastructure.Tests/MiTrainer.Infrastructure.Tests.csproj" />
+    <Project Path="tests/MiTrainer.App.Tests/MiTrainer.App.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/JuegoPrueba/JuegoPrueba.csproj" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/README.md" />
+    <File Path="docs/arquitectura.md" />
+    <File Path="docs/motor-de-memoria.md" />
+    <File Path="docs/formatos.md" />
+    <File Path="docs/guia-de-uso.md" />
+    <File Path="docs/pruebas.md" />
+    <File Path="docs/convenciones.md" />
   </Folder>
 </Solution>

@@ -1,0 +1,9 @@
+global using MiTrainer.App.Controls;
+global using MiTrainer.App.Theming;
+global using MiTrainer.Core.Cheats;
+global using MiTrainer.Core.Games;
+global using MiTrainer.Core.Memory;
+global using MiTrainer.Core.Pointers;
+global using MiTrainer.Core.Scanning;
+global using MiTrainer.Core.Trainer;
+global using MiTrainer.Core.Values;

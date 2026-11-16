@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Implementaciones para Windows de las interfaces de Core: memoria de procesos, tiendas de juegos y archivos JSON. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MiTrainer.Infrastructure</RootNamespace>
+    <!-- LibraryImport genera el código de las llamadas a Windows y necesita bloques unsafe -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MiTrainer.Core\MiTrainer.Core.csproj" />
+  </ItemGroup>
+
+</Project>
